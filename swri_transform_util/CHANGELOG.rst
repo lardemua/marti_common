@@ -2,50 +2,6 @@
 Changelog for package swri_transform_util
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-2.9.0 (2019-05-23)
-------------------
-
-2.8.0 (2019-02-06)
-------------------
-* Reduce the number of local_xy subscribers from 3 per transform manager to 1 (`#537 <https://github.com/swri-robotics/marti_common/issues/537>`_)
-* Add dynamic parameters (`#532 <https://github.com/swri-robotics/marti_common/issues/532>`_)
-* Contributors: Matthew
-
-2.7.3 (2019-01-03)
-------------------
-
-2.7.2 (2018-12-20)
-------------------
-* Fix the unit test that intermittently breaks (`#534 <https://github.com/swri-robotics/marti_common/issues/534>`_)
-* Contributors: P. J. Reed
-
-2.7.1 (2018-12-14)
-------------------
-
-2.7.0 (2018-12-04)
-------------------
-
-2.6.0 (2018-11-03)
-------------------
-
-2.5.0 (2018-10-12)
-------------------
-
-2.4.0 (2018-10-09)
-------------------
-* Handle invalid fixes properly (`#519 <https://github.com/swri-robotics/marti_common/issues/519>`_)
-* Contributors: P. J. Reed
-
-2.3.0 (2018-05-25)
-------------------
-* Initialize transform timestamp to 0 instead of ros::Time::now() (`#515 <https://github.com/swri-robotics/marti_common/issues/515>`_)
-* Contributors: Marc Alban
-
-2.2.1 (2018-05-11)
-------------------
-* Support ROS Melodic (`#514 <https://github.com/swri-robotics/marti_common/issues/514>`_)
-* Contributors: P. J. Reed
-
 2.2.0 (2018-02-12)
 ------------------
 * Add gps_transform_publisher. (`#509 <https://github.com/swri-robotics/marti_common/issues/509>`_)

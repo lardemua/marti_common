@@ -202,4 +202,3 @@ namespace swri_transform_util
     return inverse;
   }
 }
-

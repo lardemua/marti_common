@@ -141,11 +141,12 @@ target_link_libraries(warp_image ${PROJECT_NAME}_nodelets ${OpenCV_LIBRARIES} ${
 swri_nodelet_add_node(crosshairs ${PROJECT_NAME} CrosshairsNodelet)
 target_link_libraries(crosshairs ${PROJECT_NAME}_nodelets ${OpenCV_LIBRARIES} ${catkin_LIBRARIES})
 
-if(CATKIN_ENABLE_TESTING)
-  find_package(rostest REQUIRED)
-  add_rostest_gtest(test_geometry_util test/geometry_util.test test/test_geometry_util.cpp)
-  target_link_libraries(test_geometry_util ${PROJECT_NAME})
-endif()
+#if(CATKIN_ENABLE_TESTING)
+ 
+# find_package(rostest REQUIRED)
+ # add_rostest_gtest(test_geometry_util test/geometry_util.test test/test_geometry_util.cpp)
+  #target_link_libraries(test_geometry_util ${PROJECT_NAME})
+#endif()
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}

@@ -3,6 +3,7 @@ project(swri_transform_util)
 
 find_package(catkin REQUIRED COMPONENTS
   diagnostic_msgs
+  dynamic_reconfigure
   geographic_msgs
   geometry_msgs
   gps_common
@@ -15,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   swri_yaml_util
   tf
   topic_tools
+  novatel_gps_driver
+  novatel_gps_msgs
 )
 
 catkin_python_setup()
@@ -32,14 +35,20 @@ if(NOT "${PROJ_FOUND}")
   )
 endif()
 
+generate_dynamic_reconfigure_options(
+  cfg/DynamicPublisher.cfg
+)
+
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
   CATKIN_DEPENDS
     diagnostic_msgs
+    dynamic_reconfigure
     geographic_msgs
     geometry_msgs
     gps_common
+    
     nodelet
     roscpp
     rospy
@@ -49,7 +58,10 @@ catkin_package(
     swri_yaml_util
     tf
     topic_tools
-  DEPENDS PROJ
+    novatel_gps_msgs
+    novatel_gps_driver
+
+    DEPENDS PROJ
 )
 
 include_directories(include 
@@ -74,14 +86,20 @@ target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PROJ_
 
 add_library(${PROJECT_NAME}_nodelets
   src/nodelets/dynamic_publisher.cpp
-  src/nodelets/gps_transform_publisher.cpp)
+  src/nodelets/gps_transform_publisher.cpp
+  src/nodelets/imu_transform_publisher.cpp)
 target_link_libraries(${PROJECT_NAME}_nodelets ${catkin_LIBRARIES} ${PROJECT_NAME})
+add_dependencies(${PROJECT_NAME}_nodelets ${PROJECT_NAME}_gencfg)
 
 add_executable(lat_lon_tf_echo src/nodes/lat_lon_tf_echo.cpp)
 target_link_libraries(lat_lon_tf_echo ${PROJECT_NAME})
 
 swri_nodelet_add_node(gps_transform_publisher ${PROJECT_NAME} GpsTransformPublisher)
 target_link_libraries(gps_transform_publisher ${PROJECT_NAME}_nodelets ${catkin_LIBRARIES})
+
+ swri_nodelet_add_node(imu_transform_publisher ${PROJECT_NAME} ImuTransformPublisher)
+ target_link_libraries(imu_transform_publisher ${PROJECT_NAME}_nodelets ${catkin_LIBRARIES})
+
 
 if(CATKIN_ENABLE_TESTING)
   find_package(rostest REQUIRED)
@@ -101,8 +119,6 @@ if(CATKIN_ENABLE_TESTING)
   add_rostest_gtest(test_transform_util launch/transform_util.test test/test_transform_util.cpp)
   target_link_libraries(test_transform_util ${PROJECT_NAME})
 
-  add_rostest(test/initialize_invalid_gps.test)
-  add_rostest(test/initialize_invalid_navsat.test)
   add_rostest(test/initialize_origin_auto_gps.test)
   add_rostest(test/initialize_origin_auto_navsat.test)
   add_rostest(test/initialize_origin_manual.test)

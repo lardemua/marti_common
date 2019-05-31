@@ -44,7 +44,7 @@ namespace swri_transform_util
 {
 class GpsTransformPublisher : public nodelet::Nodelet
 {
- private:
+private:
   ros::Subscriber gps_sub_;
 
   tf::TransformBroadcaster tf_;
@@ -54,9 +54,8 @@ class GpsTransformPublisher : public nodelet::Nodelet
   std::string veh_frame_id_;
   std::string global_frame_id_;
 
- public:
+public:
   void onInit();
-
 
   void HandleGps(const gps_common::GPSFixPtr& gps_fix);
 };
@@ -64,8 +63,8 @@ class GpsTransformPublisher : public nodelet::Nodelet
 void GpsTransformPublisher::onInit()
 {
   ros::NodeHandle priv = getPrivateNodeHandle();
-  swri::param(priv,"child_frame_id", veh_frame_id_, std::string("base_link"));
-  swri::param(priv,"parent_frame_id", global_frame_id_, std::string("map"));
+  swri::param(priv, "child_frame_id", veh_frame_id_, std::string("base_link"));
+  swri::param(priv, "parent_frame_id", global_frame_id_, std::string("map"));
 
   gps_sub_ = getNodeHandle().subscribe("gps", 100, &GpsTransformPublisher::HandleGps, this);
 
@@ -79,6 +78,7 @@ void GpsTransformPublisher::HandleGps(const gps_common::GPSFixPtr& gps_fix)
   // Get the orientation from the GPS track.
   // NOTE: This will be unreliable when the vehicle is stopped or moving at low
   //       speed.
+
   double yaw = (90.0 - gps_fix->track) * swri_math_util::_deg_2_rad;
   yaw = swri_math_util::WrapRadians(yaw, swri_math_util::_pi);
   tf::Quaternion orientation;
@@ -93,15 +93,12 @@ void GpsTransformPublisher::HandleGps(const gps_common::GPSFixPtr& gps_fix)
     position = to_local_xy * position;
     transform.setOrigin(position);
 
-    tf_.sendTransform(tf::StampedTransform(
-        transform,
-        gps_fix->header.stamp,
-        global_frame_id_,
-        veh_frame_id_));
+
+
+    tf_.sendTransform(tf::StampedTransform(transform, gps_fix->header.stamp, global_frame_id_, veh_frame_id_));
   }
 }
 }  // namespace swri_transform_util
 
 #include <swri_nodelet/class_list_macros.h>
 SWRI_NODELET_EXPORT_CLASS(swri_transform_util, GpsTransformPublisher)
-

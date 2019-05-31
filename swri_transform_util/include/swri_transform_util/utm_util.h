@@ -178,4 +178,4 @@ namespace swri_transform_util
   };
 }
 
-#endif  // TRANSFORM_UTIL_UTM_UTIL_H_
+#endif // TRANSFORM_UTIL_UTM_UTIL_H_

@@ -37,335 +37,299 @@
 
 namespace swri_transform_util
 {
-  TransformManager::TransformManager()
+TransformManager::TransformManager()
+{
+  std::vector<boost::shared_ptr<Transformer> > transformers;
+  transformers.push_back(boost::make_shared<Wgs84Transformer>());
+  transformers.push_back(boost::make_shared<UtmTransformer>());
+
+  for (size_t i = 0; i < transformers.size(); i++)
   {
-    std::vector<boost::shared_ptr<Transformer> > transformers;
-    transformers.push_back(boost::make_shared<Wgs84Transformer>());
-    transformers.push_back(boost::make_shared<UtmTransformer>());
+    boost::shared_ptr<Transformer> transformer = transformers[i];
+    std::map<std::string, std::vector<std::string> > supports = transformer->Supports();
 
-    for (size_t i = 0; i < transformers.size(); i++)
+    std::map<std::string, std::vector<std::string> >::iterator iter;
+    for (iter = supports.begin(); iter != supports.end(); ++iter)
     {
-      boost::shared_ptr<Transformer> transformer = transformers[i];
-      std::map<std::string, std::vector<std::string> > supports = transformer->Supports();
-
-      std::map<std::string, std::vector<std::string> >::iterator iter;
-      for (iter = supports.begin(); iter != supports.end(); ++iter)
+      for (uint32_t j = 0; j < iter->second.size(); j++)
       {
-        for (uint32_t j = 0; j < iter->second.size(); j++)
+        if (transformers_[iter->first].count(iter->second[j]) > 0)
         {
-          if (transformers_[iter->first].count(iter->second[j]) > 0)
-          {
-            ROS_WARN("[transform_manager]: Transformer conflict for %s to %s",
-                iter->first.c_str(), iter->second[j].c_str());
-          }
-
-          transformers_[iter->first][iter->second[j]] = transformer;
+          ROS_WARN("[transform_manager]: Transformer conflict for %s to %s", iter->first.c_str(),
+                   iter->second[j].c_str());
         }
+
+        transformers_[iter->first][iter->second[j]] = transformer;
       }
     }
   }
+}
 
-  TransformManager::~TransformManager()
+TransformManager::~TransformManager()
+{
+}
+
+void TransformManager::Initialize(boost::shared_ptr<tf::TransformListener> tf)
+{
+  tf_listener_ = tf;
+
+  local_xy_util_ = boost::make_shared<LocalXyWgs84Util>();
+
+  std::map<std::string, std::map<std::string, boost::shared_ptr<Transformer> > >::iterator iter1;
+  for (iter1 = transformers_.begin(); iter1 != transformers_.end(); ++iter1)
   {
+    std::map<std::string, boost::shared_ptr<Transformer> >::iterator iter2;
+    for (iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2)
+    {
+      iter2->second->Initialize(tf);
+    }
   }
+}
 
-  void TransformManager::Initialize(boost::shared_ptr<tf::TransformListener> tf)
+bool TransformManager::GetTransform(const std::string& target_frame, const std::string& source_frame,
+                                    const ros::Time& time, Transform& transform) const
+{
+  std::string src_frame = NormalizeFrameId(source_frame);
+  std::string tgt_frame = NormalizeFrameId(target_frame);
+  if (tgt_frame == src_frame)
   {
-    tf_listener_ = tf;
-
-    local_xy_util_ = boost::make_shared<LocalXyWgs84Util>();
-
-    std::map<std::string, std::map<std::string, boost::shared_ptr<Transformer> > >::iterator iter1;
-    for (iter1 = transformers_.begin(); iter1 != transformers_.end(); ++iter1)
-    {
-      std::map<std::string, boost::shared_ptr<Transformer> >::iterator iter2;
-      for (iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2)
-      {
-        iter2->second->Initialize(tf, local_xy_util_);
-      }
-    }
-  }
-
-  bool TransformManager::GetTransform(
-      const std::string& target_frame,
-      const std::string& source_frame,
-      const ros::Time& time,
-      Transform& transform) const
-  {
-    std::string src_frame = NormalizeFrameId(source_frame);
-    std::string tgt_frame = NormalizeFrameId(target_frame);
-    if (tgt_frame == src_frame)
-    {
-      transform = Transform();
-      return true;
-    }
-
-    if (!tf_listener_)
-    {
-      ROS_WARN_THROTTLE(2.0, "[transform_manager]: TF listener not initialized.");
-      return false;
-    }
-
-    // Check if the source frame is in the TF tree.
-    std::string source = src_frame;
-    if (tf_listener_->frameExists(source))
-    {
-      source = _tf_frame;
-    }
-
-    // Check if the target frame is in the TF tree.
-    std::string target = tgt_frame;
-    if (tf_listener_->frameExists(target))
-    {
-      target = _tf_frame;
-    }
-
-    // Check if either of the frames is local_xy
-    if (source == _local_xy_frame)
-    {
-      source = _tf_frame;
-
-      if (!local_xy_util_->Initialized())
-      {
-        ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
-        return false;
-      }
-
-      src_frame = local_xy_util_->Frame();
-    }
-
-    if (target == _local_xy_frame)
-    {
-      target = _tf_frame;
-      if (!local_xy_util_->Initialized())
-      {
-        ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
-        return false;
-      }
-
-      tgt_frame = local_xy_util_->Frame();
-    }
-
-    if (source == target)
-    {
-      // Both frames are in the TF tree.
-
-      tf::StampedTransform tf_transform;
-      if (GetTransform(tgt_frame, src_frame, time, tf_transform))
-      {
-        transform = tf_transform;
-        return true;
-      }
-
-      ROS_WARN_THROTTLE(
-        2.0,
-        "[transform_manager]: Failed to get tf transform ('%s' to '%s').  Both "
-        "frames exist in tf.",
-        source_frame.c_str(), target_frame.c_str());
-      return false;
-    }
-
-    SourceTargetMap::const_iterator source_iter = transformers_.find(source);
-    if (source_iter == transformers_.end())
-    {
-      ROS_WARN_THROTTLE(
-        2.0,
-        "[transform_manager]: No transformer from '%s' to '%s'."
-        " If '%s' is a /tf frame, it may not have been broadcast recently.",
-        source.c_str(), target.c_str(), source.c_str());
-
-      return false;
-    }
-
-    TransformerMap::const_iterator target_iter = source_iter->second.find(target);
-    if (target_iter == source_iter->second.end())
-    {
-      ROS_WARN_THROTTLE(
-        2.0,
-        "[transform_manager]: No transformer from '%s' to '%s'."
-        " If '%s' is a /tf frame, it may not have been broadcast recently.",
-        source.c_str(), target.c_str(), target.c_str());
-
-      return false;
-    }
-
-    boost::shared_ptr<Transformer> transformer = target_iter->second;
-
-    if (!transformer)
-    {
-      ROS_ERROR_THROTTLE(2.0, "[transform_manager]: Encountered null transformer for '%s' to '%s'.",
-          source.c_str(), target.c_str());
-
-      return false;
-    }
-
-    return transformer->GetTransform(tgt_frame, src_frame, time, transform);
-  }
-
-  bool TransformManager::GetTransform(
-      const std::string& target_frame,
-      const std::string& source_frame,
-      Transform& transform) const
-  {
-    return GetTransform(target_frame, source_frame, ros::Time(0), transform);
-  }
-
-  bool TransformManager::SupportsTransform(
-      const std::string& target_frame,
-      const std::string& source_frame) const
-  {
-    std::string source = NormalizeFrameId(source_frame);
-    std::string target = NormalizeFrameId(target_frame);
-    if (target == source)
-    {
-      return true;
-    }
-
-    if (!tf_listener_)
-    {
-      return false;
-    }
-
-    // Check if the source frame is in the TF tree.
-    if (tf_listener_->frameExists(source))
-    {
-      source = _tf_frame;
-    }
-
-    // Check if the target frame is in the TF tree.
-    if (tf_listener_->frameExists(target))
-    {
-      target = _tf_frame;
-    }
-
-    // Check if either of the frames is local_xy
-    if (source == _local_xy_frame)
-    {
-      source = _tf_frame;
-      if (!local_xy_util_->Initialized())
-      {
-        ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
-        return false;
-      }
-    }
-
-    if (target == _local_xy_frame)
-    {
-      target = _tf_frame;
-      if (!local_xy_util_->Initialized())
-      {
-        ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
-        return false;
-      }
-    }
-
-    if (source == target)
-    {
-      return true;
-    }
-
-    SourceTargetMap::const_iterator source_iter = transformers_.find(source);
-    if (source_iter == transformers_.end())
-    {
-      ROS_WARN_THROTTLE(
-        2.0,
-        "[transform_manager]: No transformer for transforming '%s' to '%s'."
-        " If '%s' is a /tf frame, it may not have been broadcast recently.",
-        source.c_str(), target.c_str(), source.c_str());
-
-      return false;
-    }
-
-    TransformerMap::const_iterator target_iter = source_iter->second.find(target);
-    if (target_iter == source_iter->second.end())
-    {
-      ROS_WARN_THROTTLE(
-        2.0,
-        "[transform_manager]: No transformer for transforming '%s' to '%s'."
-        " If '%s' is a /tf frame, it may not have been broadcast recently.",
-        source.c_str(), target.c_str(), target.c_str());
-
-      return false;
-    }
-
+    transform = Transform();
     return true;
   }
 
-  bool TransformManager::GetTransform(
-      const std::string& target_frame,
-      const std::string& source_frame,
-      const ros::Time& time,
-      tf::StampedTransform& transform) const
+  if (!tf_listener_)
   {
-    return GetTransform(target_frame, source_frame, time, ros::Duration(0.1), transform);
+    ROS_WARN_THROTTLE(2.0, "[transform_manager]: TF listener not initialized.");
+    return false;
   }
 
-  bool TransformManager::GetTransform(
-      const std::string& target_frame,
-      const std::string& source_frame,
-      const ros::Time& time,
-      const ros::Duration& timeout,
-      tf::StampedTransform& transform) const
+  // Check if the source frame is in the TF tree.
+  std::string source = src_frame;
+  if (tf_listener_->frameExists(source))
   {
-    if (!tf_listener_)
+    source = _tf_frame;
+  }
+
+  // Check if the target frame is in the TF tree.
+  std::string target = tgt_frame;
+  if (tf_listener_->frameExists(target))
+  {
+    target = _tf_frame;
+  }
+
+  // Check if either of the frames is local_xy
+  if (source == _local_xy_frame)
+  {
+    source = _tf_frame;
+
+    if (!local_xy_util_->Initialized())
+    {
+      ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
       return false;
-
-    bool has_transform = false;
-    try
-    {
-      tf_listener_->waitForTransform(
-          target_frame,
-          source_frame,
-          time,
-          timeout);
-
-      tf_listener_->lookupTransform(
-          target_frame,
-          source_frame,
-          time,
-          transform);
-
-      has_transform = true;
-    }
-    catch (const tf::LookupException& e)
-    {
-      ROS_ERROR_THROTTLE(2.0, "[transform_manager]: %s", e.what());
-    }
-    catch (const tf::ConnectivityException& e)
-    {
-      ROS_ERROR_THROTTLE(2.0, "[transform_manager]: %s", e.what());
-    }
-    catch (const tf::ExtrapolationException& e)
-    {
-      ROS_ERROR_THROTTLE(2.0, "[transform_manager]: %s", e.what());
-    }
-    catch (...)
-    {
-      ROS_ERROR_THROTTLE(2.0, "[transform_manager]: Exception looking up transform");
     }
 
-    return has_transform;
+    src_frame = local_xy_util_->Frame();
   }
 
-  bool TransformManager::GetTransform(
-      const std::string& target_frame,
-      const std::string& source_frame,
-      tf::StampedTransform& transform) const
+  if (target == _local_xy_frame)
   {
-    return GetTransform(target_frame, source_frame, ros::Time(0), transform);
+    target = _tf_frame;
+    if (!local_xy_util_->Initialized())
+    {
+      ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
+      return false;
+    }
+
+    tgt_frame = local_xy_util_->Frame();
   }
 
-  bool TransformManager::GetTransform(
-      const std::string& target_frame,
-      const std::string& source_frame,
-      const ros::Duration& timeout,
-      tf::StampedTransform& transform) const
+  if (source == target)
   {
-    return GetTransform(target_frame, source_frame, ros::Time(0), timeout, transform);
+    // Both frames are in the TF tree.
+
+    tf::StampedTransform tf_transform;
+    if (GetTransform(tgt_frame, src_frame, time, tf_transform))
+    {
+      transform = tf_transform;
+      return true;
+    }
+
+    ROS_WARN_THROTTLE(2.0, "[transform_manager]: Failed to get tf transform ('%s' to '%s').  Both "
+                           "frames exist in tf.",
+                      source_frame.c_str(), target_frame.c_str());
+    return false;
   }
 
-  const LocalXyWgs84UtilPtr &TransformManager::LocalXyUtil() const
+  SourceTargetMap::const_iterator source_iter = transformers_.find(source);
+  if (source_iter == transformers_.end())
   {
-    return local_xy_util_;
+    ROS_WARN_THROTTLE(2.0, "[transform_manager]: No transformer from '%s' to '%s'."
+                           " If '%s' is a /tf frame, it may not have been broadcast recently.",
+                      source.c_str(), target.c_str(), source.c_str());
+
+    return false;
   }
+
+  TransformerMap::const_iterator target_iter = source_iter->second.find(target);
+  if (target_iter == source_iter->second.end())
+  {
+    ROS_WARN_THROTTLE(2.0, "[transform_manager]: No transformer from '%s' to '%s'."
+                           " If '%s' is a /tf frame, it may not have been broadcast recently.",
+                      source.c_str(), target.c_str(), target.c_str());
+
+    return false;
+  }
+
+  boost::shared_ptr<Transformer> transformer = target_iter->second;
+
+  if (!transformer)
+  {
+    ROS_ERROR_THROTTLE(2.0, "[transform_manager]: Encountered null transformer for '%s' to '%s'.", source.c_str(),
+                       target.c_str());
+
+    return false;
+  }
+
+  return transformer->GetTransform(tgt_frame, src_frame, time, transform);
+}
+
+bool TransformManager::GetTransform(const std::string& target_frame, const std::string& source_frame,
+                                    Transform& transform) const
+{
+  return GetTransform(target_frame, source_frame, ros::Time(0), transform);
+}
+
+bool TransformManager::SupportsTransform(const std::string& target_frame, const std::string& source_frame) const
+{
+  std::string source = NormalizeFrameId(source_frame);
+  std::string target = NormalizeFrameId(target_frame);
+  if (target == source)
+  {
+    return true;
+  }
+
+  if (!tf_listener_)
+  {
+    return false;
+  }
+
+  // Check if the source frame is in the TF tree.
+  if (tf_listener_->frameExists(source))
+  {
+    source = _tf_frame;
+  }
+
+  // Check if the target frame is in the TF tree.
+  if (tf_listener_->frameExists(target))
+  {
+    target = _tf_frame;
+  }
+
+  // Check if either of the frames is local_xy
+  if (source == _local_xy_frame)
+  {
+    source = _tf_frame;
+    if (!local_xy_util_->Initialized())
+    {
+      ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
+      return false;
+    }
+  }
+
+  if (target == _local_xy_frame)
+  {
+    target = _tf_frame;
+    if (!local_xy_util_->Initialized())
+    {
+      ROS_WARN_THROTTLE(2.0, "[transform_manager]: Local XY frame has not been initialized.");
+      return false;
+    }
+  }
+
+  if (source == target)
+  {
+    return true;
+  }
+
+  SourceTargetMap::const_iterator source_iter = transformers_.find(source);
+  if (source_iter == transformers_.end())
+  {
+    ROS_WARN_THROTTLE(2.0, "[transform_manager]: No transformer for transforming '%s' to '%s'."
+                           " If '%s' is a /tf frame, it may not have been broadcast recently.",
+                      source.c_str(), target.c_str(), source.c_str());
+
+    return false;
+  }
+
+  TransformerMap::const_iterator target_iter = source_iter->second.find(target);
+  if (target_iter == source_iter->second.end())
+  {
+    ROS_WARN_THROTTLE(2.0, "[transform_manager]: No transformer for transforming '%s' to '%s'."
+                           " If '%s' is a /tf frame, it may not have been broadcast recently.",
+                      source.c_str(), target.c_str(), target.c_str());
+
+    return false;
+  }
+
+  return true;
+}
+
+bool TransformManager::GetTransform(const std::string& target_frame, const std::string& source_frame,
+                                    const ros::Time& time, tf::StampedTransform& transform) const
+{
+  return GetTransform(target_frame, source_frame, time, ros::Duration(0.1), transform);
+}
+
+bool TransformManager::GetTransform(const std::string& target_frame, const std::string& source_frame,
+                                    const ros::Time& time, const ros::Duration& timeout,
+                                    tf::StampedTransform& transform) const
+{
+  if (!tf_listener_)
+    return false;
+
+  bool has_transform = false;
+  try
+  {
+    tf_listener_->waitForTransform(target_frame, source_frame, time, timeout);
+
+    tf_listener_->lookupTransform(target_frame, source_frame, time, transform);
+
+    has_transform = true;
+  }
+  catch (const tf::LookupException& e)
+  {
+    ROS_ERROR_THROTTLE(2.0, "[transform_manager]: %s", e.what());
+  }
+  catch (const tf::ConnectivityException& e)
+  {
+    ROS_ERROR_THROTTLE(2.0, "[transform_manager]: %s", e.what());
+  }
+  catch (const tf::ExtrapolationException& e)
+  {
+    ROS_ERROR_THROTTLE(2.0, "[transform_manager]: %s", e.what());
+  }
+  catch (...)
+  {
+    ROS_ERROR_THROTTLE(2.0, "[transform_manager]: Exception looking up transform");
+  }
+
+  return has_transform;
+}
+
+bool TransformManager::GetTransform(const std::string& target_frame, const std::string& source_frame,
+                                    tf::StampedTransform& transform) const
+{
+  return GetTransform(target_frame, source_frame, ros::Time(0), transform);
+}
+
+bool TransformManager::GetTransform(const std::string& target_frame, const std::string& source_frame,
+                                    const ros::Duration& timeout, tf::StampedTransform& transform) const
+{
+  return GetTransform(target_frame, source_frame, ros::Time(0), timeout, transform);
+}
+
+const LocalXyWgs84UtilPtr& TransformManager::LocalXyUtil() const
+{
+  return local_xy_util_;
+}
 }

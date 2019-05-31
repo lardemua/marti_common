@@ -182,7 +182,8 @@ class OriginManager(object):
                 self.set_origin_from_dict(origin)
                 return
         else:
-            origins_list_str = ','.join(['"{}"'.format(x.name) for x in origin_list])
+            origins_list_str = ','.join(
+                ['"{}"'.format(x.name) for x in origin_list])
             message = 'Origin "{}" is not in the origin list. Available origins are '.format(
                 origin_name, origins_list_str)
             raise KeyError(message)
@@ -200,7 +201,8 @@ class OriginManager(object):
         if msg.status.status == GPSStatus.STATUS_NO_FIX:
             message = 'Cannot set origin from invalid GPSFix. Waiting for a valid one...'
             raise InvalidFixException(message)
-        self.set_origin(msg.latitude, msg.longitude, msg.altitude, msg.header.stamp)
+        self.set_origin(msg.latitude, msg.longitude,
+                        msg.altitude, msg.header.stamp)
         self.origin_source = 'gpsfix'
 
     def set_origin_from_navsat(self, msg):
@@ -216,7 +218,8 @@ class OriginManager(object):
         if msg.status.status == NavSatStatus.STATUS_NO_FIX:
             message = 'Cannot set origin from invalid NavSatFix. Waiting for a valid one...'
             raise InvalidFixException(message)
-        self.set_origin(msg.latitude, msg.longitude, msg.altitude, msg.header.stamp)
+        self.set_origin(msg.latitude, msg.longitude,
+                        msg.altitude, msg.header.stamp)
         self.origin_source = 'navsat'
 
     def _publish_diagnostic(self):
@@ -241,7 +244,8 @@ class OriginManager(object):
                 status.message = "Origin Was Set Manually"
 
             frame_id = self.origin.header.frame_id
-            status.values.append(KeyValue(key="Origin Frame ID", value=frame_id))
+            status.values.append(
+                KeyValue(key="Origin Frame ID", value=frame_id))
 
             latitude = "%f" % self.origin.pose.position.y
             status.values.append(KeyValue(key="Latitude", value=latitude))
